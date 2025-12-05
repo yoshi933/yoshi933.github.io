@@ -1,0 +1,899 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <title>簡易百人一首アプリ（完全動作版）</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <style>
+    :root { --bg:#faf7f2; --card:#fff; --ink:#222; --muted:#666; --accent:#3a7; --danger:#c33; --gold:#d4a373; }
+    *{ box-sizing:border-box; }
+    body{ margin:0; font-family: system-ui, -apple-system, "Segoe UI", Roboto, "Hiragino Sans", "Noto Sans JP", sans-serif; background:var(--bg); color:var(--ink); }
+    header{ padding:16px; background:#f2e9de; border-bottom:1px solid #e5dccf; }
+    header h1{ margin:0 0 8px; font-size:20px; }
+    header .stats{ font-size:12px; color:var(--muted); display:flex; gap:16px; flex-wrap:wrap; align-items:center; }
+    .container{ max-width:1100px; margin:0 auto; padding:16px; }
+    .tabs{ display:flex; gap:8px; margin-bottom:12px; flex-wrap:wrap; }
+    .tab{ padding:10px 14px; background:#eee; border:1px solid #ddd; border-radius:8px; cursor:pointer; }
+    .tab.active{ background:var(--accent); color:white; border-color:var(--accent); }
+    .card{ background:var(--card); border:1px solid #e6e6e6; border-radius:12px; padding:16px; box-shadow:0 2px 8px rgba(0,0,0,0.06); }
+    .panel{ display:none; }
+    .panel.active{ display:block; }
+    .row{ display:grid; grid-template-columns:1fr; gap:12px; }
+    @media (min-width: 900px){ .row.cols-2{ grid-template-columns:1fr 1fr; } .row.cols-3{ grid-template-columns:1fr 1fr 1fr; } }
+    .title{ font-weight:600; margin-bottom:8px; }
+    .muted{ color:var(--muted); font-size:13px; }
+    .controls{ display:flex; gap:8px; flex-wrap:wrap; margin-top:12px; align-items:center; }
+    button, input, select, textarea{ font:inherit; padding:8px 12px; border:1px solid #ddd; border-radius:8px; background:#fff; }
+    button.primary{ background:var(--accent); color:#fff; border-color:var(--accent); }
+    button.ghost{ background:transparent; }
+    .choices{ display:grid; grid-template-columns:1fr; gap:8px; margin-top:12px; }
+    @media (min-width: 640px){ .choices{ grid-template-columns:1fr 1fr; } }
+    .choice{ padding:10px; border:1px solid #ddd; border-radius:10px; background:#fff; cursor:pointer; position:relative; }
+    .choice.correct{ border-color:#2e7d32; background:#e7f5e6; }
+    .choice.wrong{ border-color:var(--danger); background:#fdecec; }
+    .badge{ display:inline-block; padding:2px 8px; border-radius:999px; background:#eee; font-size:12px; }
+    .hint{ opacity:0; transition:opacity .4s ease; font-size:12px; color:#444; position:absolute; top:8px; right:8px; background:#fff8; padding:2px 6px; border-radius:6px; }
+    .hint.show{ opacity:1; }
+    .list{ margin-top:12px; }
+    .item{ padding:10px; border-bottom:1px solid #eee; cursor:pointer; }
+    .item:hover{ background:#f8f8f8; }
+    .spacer{ height:8px; }
+    footer{ text-align:center; padding:24px; color:var(--muted); font-size:12px; }
+    .gold{ color:var(--gold); font-weight:600; }
+    .pill{ padding:4px 8px; border:1px solid #ddd; border-radius:999px; font-size:12px; }
+    .grid-2{ display:grid; grid-template-columns:1fr; gap:12px; }
+    @media (min-width: 800px){ .grid-2{ grid-template-columns:1fr 1fr; } }
+    .kpi{ display:flex; gap:16px; flex-wrap:wrap; }
+    .kpi .pill{ background:#fff; }
+    .mode-note{ font-size:12px; color:#555; }
+    /* ダッシュボード固有 */
+    .dashboard-grid{ display:grid; gap:12px; grid-template-columns:1fr; }
+    @media (min-width: 900px){ .dashboard-grid{ grid-template-columns: 2fr 1fr; } }
+    .today-card{ font-size:18px; line-height:1.6; }
+    .weak-list .item{ display:flex; justify-content:space-between; align-items:center; gap:8px; }
+    .search-top{ display:flex; gap:8px; margin-bottom:12px; }
+    .search-top input{ flex:1; padding:10px 12px; border-radius:8px; border:1px solid #ddd; }
+    /* 資料一覧固定高さ */
+    #res-list { max-height: 420px; overflow-y: auto; padding-right: 8px; }
+    /* エディタの見やすさ */
+    #data-editor { min-height: 220px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; white-space: pre-wrap; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>百人一首アプリ</h1>
+    <div class="stats">
+      <span>連続正解: <span id="streak">0</span></span>
+      <span>通算正解: <span id="total">0</span></span>
+      <span>正答率: <span id="accuracy">0%</span></span>
+      <span>腕試しスコア: <span id="challenge-score">0</span></span>
+      <span>腕試し時間: <span id="challenge-time">0s</span></span>
+    </div>
+  </header>
+
+  <div class="container">
+    <div class="tabs">
+      <div class="tab active" data-tab="dashboard">ダッシュボード</div>
+      <div class="tab" data-tab="flash">フラッシュカード</div>
+      <div class="tab" data-tab="practice">練習（条件指定）</div>
+      <div class="tab" data-tab="quiz">クイズ</div>
+      <div class="tab" data-tab="challenge">腕試し</div>
+      <div class="tab" data-tab="resources">資料</div>
+      <div class="tab" data-tab="search">検索</div>
+      <div class="tab" data-tab="settings">設定</div>
+    </div>
+
+    <!-- ダッシュボード -->
+    <section class="panel active" id="dashboard">
+      <div class="card">
+        <div class="search-top">
+          <input id="dash-search" placeholder="検索（作者・語句・決まり字）" />
+          <button id="dash-search-go" class="primary">検索</button>
+        </div>
+
+        <div class="dashboard-grid">
+          <div>
+            <div class="card today-card">
+              <div class="title">今日の一句</div>
+              <div class="muted">（日付に基づいて自動選出）</div>
+              <div class="spacer"></div>
+              <div><span class="badge">番号</span> <span id="today-id"></span> ／ <span class="badge">作者</span> <span id="today-author"></span></div>
+              <div class="spacer"></div>
+              <div><strong id="today-kami"></strong></div>
+              <div class="spacer"></div>
+              <div id="today-shimo" style="filter: blur(3px);"></div>
+              <div class="spacer"></div>
+              <div><span class="badge">決まり字</span> <span id="today-kimari" class="gold"></span></div>
+              <div class="spacer"></div>
+              <div class="controls">
+                <button id="today-flash" class="primary">フラッシュカード開始</button>
+                <button id="today-practice" class="primary">練習開始</button>
+                <button id="today-challenge" class="primary">腕試し開始</button>
+              </div>
+            </div>
+
+            <div class="spacer"></div>
+
+            <div class="card">
+              <div class="title">あなたの正答状況</div>
+              <div class="kpi">
+                <span class="pill">連続正解: <span id="dash-streak">0</span></span>
+                <span class="pill">通算正解: <span id="dash-total">0</span></span>
+                <span class="pill">正答率: <span id="dash-accuracy">0%</span></span>
+              </div>
+              <div class="spacer"></div>
+              <div class="muted">最近の成績（直近10回）</div>
+              <div id="dash-recent" class="list"></div>
+            </div>
+          </div>
+
+          <div>
+            <div class="card">
+              <div class="title">苦手な句（上位3件）</div>
+              <div class="muted">正答率が低い順に最大3件を表示します</div>
+              <div class="spacer"></div>
+              <div id="dash-weak" class="weak-list list"></div>
+            </div>
+
+            <div class="spacer"></div>
+
+            <div class="card">
+              <div class="title">クイック操作</div>
+              <div class="controls" style="flex-direction:column; align-items:stretch;">
+                <button id="dash-flash-btn" class="primary">フラッシュカード開始</button>
+                <button id="dash-practice-btn" class="primary">練習開始（デフォルト）</button>
+                <button id="dash-challenge-btn" class="primary">腕試し開始</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- フラッシュカード -->
+    <section class="panel" id="flash">
+      <div class="card">
+        <div class="title">現在の歌</div>
+        <div id="card-view">
+          <div class="muted">番号 <span id="card-id"></span> ／ 作者 <span id="card-author"></span></div>
+          <div class="spacer"></div>
+          <div style="font-size: 18px; line-height: 1.6;">
+            <div><span class="badge">上の句</span><br><span id="card-kami"></span></div>
+            <div class="spacer"></div>
+            <div><span class="badge">下の句</span><br>
+              <span id="card-shimo" style="filter: blur(3px);"></span>
+              <span class="hint" id="card-hint"></span>
+            </div>
+            <div class="spacer"></div>
+            <div><span class="badge">決まり字</span> <span id="card-kimari" class="gold"></span></div>
+          </div>
+          <div class="controls">
+            <button id="toggle-shimo" class="primary">下の句を表示</button>
+            <button id="next-card">次へ</button>
+            <button id="random-card" class="ghost">ランダム</button>
+            <span class="mode-note">未回答が続くとヒントが表示されます</span>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 練習（条件指定） -->
+    <section class="panel" id="practice">
+      <div class="card">
+        <div class="title">練習（条件を組み合わせて出題）</div>
+        <div class="row cols-3">
+          <input id="pr-author" placeholder="作者で絞り込む（例：在原業平）" />
+          <input id="pr-keyword" placeholder="キーワード（本文に含まれる語）" />
+          <select id="pr-kimari">
+            <option value="">決まり字で絞り込む</option>
+          </select>
+          <input id="pr-range" placeholder="番号範囲（例：1-20, 50-100）" />
+          <select id="pr-weak">
+            <option value="">弱点の絞り込み</option>
+            <option value="low-acc">正答率が低い（50%未満）</option>
+            <option value="no-attempts">未練習</option>
+            <option value="recent-wrong">直近で誤答</option>
+          </select>
+          <select id="pr-size">
+            <option value="10">出題数 10</option>
+            <option value="20">出題数 20</option>
+            <option value="50">出題数 50</option>
+          </select>
+        </div>
+        <div class="controls">
+          <button id="pr-start" class="primary">この条件で練習開始</button>
+          <button id="pr-clear" class="ghost">条件クリア</button>
+          <span class="pill" id="pr-count">対象: 0首</span>
+        </div>
+        <div class="spacer"></div>
+        <div id="practice-wrap" class="card" style="display:none;">
+          <div class="kpi">
+            <span class="pill">現在: <span id="pr-progress">0</span>/<span id="pr-total">0</span></span>
+            <span class="pill">正答: <span id="pr-correct">0</span></span>
+            <span class="pill">誤答: <span id="pr-wrong">0</span></span>
+          </div>
+          <div class="spacer"></div>
+          <div style="font-size:18px; line-height:1.6;">
+            <div><span class="badge">上の句</span><br><span id="pr-kami"></span></div>
+          </div>
+          <div class="choices" id="pr-choices"></div>
+          <div class="controls">
+            <button id="pr-next" class="primary">次へ</button>
+            <span id="pr-result" class="muted"></span>
+            <span class="hint" id="pr-hint"></span>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- クイズ -->
+    <section class="panel" id="quiz">
+      <div class="card">
+        <div class="title">四択クイズ（上の句 → 下の句）</div>
+        <div id="quiz-view">
+          <div class="muted">番号 <span id="quiz-id"></span> ／ 作者 <span id="quiz-author"></span></div>
+          <div class="spacer"></div>
+          <div style="font-size: 18px; line-height: 1.6;">
+            <div><span class="badge">上の句</span><br><span id="quiz-kami"></span></div>
+          </div>
+          <div class="choices" id="quiz-choices"></div>
+          <div class="controls">
+            <button id="next-quiz" class="primary">次の問題</button>
+            <button id="shuffle-quiz">ランダム出題</button>
+            <span id="quiz-result" class="muted"></span>
+            <span class="hint" id="quiz-hint"></span>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 腕試し -->
+    <section class="panel" id="challenge">
+      <div class="card">
+        <div class="title">腕試し（百首通しランダム）</div>
+        <p class="muted">全データから完全ランダムに出題。スコアと時間で腕試し。</p>
+        <div class="controls">
+          <button id="ch-start" class="primary">腕試し開始</button>
+          <button id="ch-stop" class="ghost">終了</button>
+          <span class="pill">正答: <span id="ch-correct">0</span></span>
+          <span class="pill">誤答: <span id="ch-wrong">0</span></span>
+          <span class="pill">時間: <span id="ch-time">0s</span></span>
+        </div>
+        <div class="spacer"></div>
+        <div id="ch-wrap" style="display:none;">
+          <div style="font-size:18px; line-height:1.6;">
+            <div><span class="badge">上の句</span><br><span id="ch-kami"></span></div>
+          </div>
+          <div class="choices" id="ch-choices"></div>
+          <div class="controls">
+            <span id="ch-result" class="muted"></span>
+            <span class="hint" id="ch-hint"></span>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 資料 -->
+    <section class="panel" id="resources">
+      <div class="card">
+        <div class="title">資料（決まり字・現代語訳・注記）</div>
+        <div class="grid-2">
+          <div class="card">
+            <div class="title">歌一覧</div>
+            <div class="list" id="res-list"></div>
+          </div>
+          <div class="card">
+            <div class="title">詳細</div>
+            <div id="res-detail" class="muted">左の一覧から歌を選んでください。</div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 検索 -->
+    <section class="panel" id="search">
+      <div class="card">
+        <div class="title">検索（作者・キーワード・決まり字）</div>
+        <div class="row cols-2">
+          <input id="q" placeholder="例：在原業平, 秋, あきのたの..." />
+          <select id="kimari-filter"><option value="">決まり字で絞り込み</option></select>
+        </div>
+        <div class="list" id="list"></div>
+      </div>
+    </section>
+
+    <!-- 設定 -->
+    <section class="panel" id="settings">
+      <div class="card">
+        <div class="title">設定・データ編集</div>
+        <p class="muted">内蔵データ（JS配列）を利用します。現代語訳は各要素に modern と notes を追加すると資料に表示されます。読み込んだデータは自動でブラウザに保存されます。</p>
+        <div class="controls">
+          <button id="export-json">データをJSONとして保存</button>
+          <button id="import-json">JSONを読み込む</button>
+          <input type="file" id="file-input" accept="application/json" style="display:none;" />
+          <button id="reset-progress" class="ghost">進捗をリセット</button>
+          <button id="clear-data" class="ghost">ローカルデータを削除</button>
+        </div>
+        <div class="spacer"></div>
+        <textarea id="data-editor"></textarea>
+        <div class="controls">
+          <button id="apply-data" class="primary">データを適用（保存）</button>
+        </div>
+      </div>
+    </section>
+  </div>
+
+  <footer>© 百人一首練習（完全動作版）</footer>
+
+  <script>
+    // --- デフォルトデータ（最初は10首） ---
+    const defaultPoems = [
+      { id: 1, author: "天智天皇", kimari: "あきの", kami: "秋の田の かりほの庵の 苫をあらみ", shimo: "わが衣手は 露にぬれつつ", modern: "", notes: "" },
+      { id: 2, author: "持統天皇", kimari: "はるす", kami: "春過ぎて 夏来にけらし 白妙の", shimo: "衣ほすてふ 天の香具山", modern: "", notes: "" },
+      { id: 3, author: "柿本人麻呂", kimari: "あしひ", kami: "あしひきの 山鳥の尾の しだり尾の", shimo: "ながながし夜を ひとりかも寝む", modern: "", notes: "" },
+      { id: 4, author: "山部赤人", kimari: "たごの", kami: "田子の浦に うち出でて見れば 白妙の", shimo: "富士の高嶺に 雪は降りつつ", modern: "", notes: "" },
+      { id: 5, author: "猿丸大夫", kimari: "おくや", kami: "奥山に もみじ踏み分け 鳴く鹿の", shimo: "声聞く時ぞ 秋は悲しき", modern: "", notes: "" },
+      { id: 6, author: "中納言家持", kimari: "かささ", kami: "かささぎの 渡せる橋に おく霜の", shimo: "白きを見れば 夜ぞふけにける", modern: "", notes: "" },
+      { id: 7, author: "安倍仲麿", kimari: "あまの", kami: "あまの原 ふりさけ見れば かすがなる", shimo: "三笠の山に 出でし月かも", modern: "", notes: "" },
+      { id: 8, author: "喜撰法師", kimari: "わがい", kami: "わが庵は 都のたつみ しかぞすむ", shimo: "世をうぢ山と 人はいふなり", modern: "", notes: "" },
+      { id: 9, author: "小野小町", kimari: "はなの", kami: "花の色は うつりにけりな いたづらに", shimo: "わが身世にふる ながめせし間に", modern: "", notes: "" },
+      { id: 10, author: "蝉丸", kimari: "これや", kami: "これやこの 行くも帰るも 別れては", shimo: "知るも知らぬも 逢坂の関", modern: "", notes: "" }
+    ];
+
+    // --- localStorage helpers ---
+    function loadPoemsFromStorage(){
+      try {
+        const raw = localStorage.getItem("hyaku_data");
+        if(raw){
+          const parsed = JSON.parse(raw);
+          if(Array.isArray(parsed) && parsed.length > 0) return parsed;
+        }
+      } catch(e){
+        console.warn("localStorage load failed", e);
+      }
+      return defaultPoems.slice();
+    }
+    function savePoemsToStorage(){
+      try {
+        localStorage.setItem("hyaku_data", JSON.stringify(poems));
+      } catch(e){
+        console.warn("localStorage save failed", e);
+      }
+    }
+    function clearPoemsFromStorage(){
+      try {
+        localStorage.removeItem("hyaku_data");
+      } catch(e){ console.warn(e); }
+    }
+
+    // --- initialize poems (persistent) ---
+    let poems = loadPoemsFromStorage();
+
+    // --- progress storage (stats, recent, challenge) ---
+    const store = {
+      load() { try { return JSON.parse(localStorage.getItem("hyaku_store") || "{}"); } catch { return {}; } },
+      save(obj) { localStorage.setItem("hyaku_store", JSON.stringify(obj)); }
+    };
+    let state = Object.assign({ streak: 0, totalCorrect: 0, quizShuffle: false, challenge: {score:0, time:0}, stats: {}, recent: [] }, store.load());
+
+    const $ = (s) => document.querySelector(s);
+    const $$ = (s) => Array.from(document.querySelectorAll(s));
+
+    // --- stats helpers ---
+    function getStat(id){
+      if(!state.stats[id]) state.stats[id] = { attempts:0, correct:0, lastWrong:false };
+      return state.stats[id];
+    }
+    function recordResult(id, isCorrect){
+      const st = getStat(id);
+      st.attempts += 1;
+      if(isCorrect){ st.correct += 1; st.lastWrong = false; state.totalCorrect = (state.totalCorrect||0) + 1; state.streak = (state.streak||0) + 1; }
+      else { st.lastWrong = true; state.streak = 0; }
+      state.recent = state.recent || [];
+      state.recent.unshift({ id, correct: !!isCorrect, time: Date.now() });
+      if(state.recent.length > 50) state.recent.length = 50;
+      store.save(state);
+      updateStats();
+      renderDashboard();
+    }
+    function overallAccuracy(){
+      const ids = Object.keys(state.stats);
+      if(ids.length === 0) return 0;
+      let c=0,a=0;
+      ids.forEach(id=>{ const st=state.stats[id]; c += st.correct; a += st.attempts; });
+      return a ? Math.round((c/a)*100) : 0;
+    }
+
+    // --- UI: tabs ---
+    $$(".tab").forEach(t => t.addEventListener("click", () => {
+      $$(".tab").forEach(x => x.classList.remove("active"));
+      $$(".panel").forEach(p => p.classList.remove("active"));
+      t.classList.add("active");
+      $("#"+t.dataset.tab).classList.add("active");
+      if(t.dataset.tab === "dashboard") renderDashboard();
+    }));
+
+    // --- update stats display ---
+    function updateStats(){
+      $("#streak").textContent = state.streak || 0;
+      $("#total").textContent = state.totalCorrect || 0;
+      $("#accuracy").textContent = overallAccuracy()+"%";
+      $("#challenge-score").textContent = state.challenge?.score || 0;
+      $("#challenge-time").textContent = (state.challenge?.time || 0) + "s";
+      $("#dash-streak").textContent = state.streak || 0;
+      $("#dash-total").textContent = state.totalCorrect || 0;
+      $("#dash-accuracy").textContent = overallAccuracy()+"%";
+    }
+    updateStats();
+
+    // --- rebuild selects ---
+    function rebuildKimariSelect(selectEl){
+      selectEl.innerHTML = '<option value="">決まり字で絞り込む</option>';
+      Array.from(new Set(poems.map(p=>p.kimari))).sort().forEach(k => {
+        const opt = document.createElement("option"); opt.value = k; opt.textContent = k; selectEl.appendChild(opt);
+      });
+    }
+    rebuildKimariSelect($("#kimari-filter"));
+    rebuildKimariSelect($("#pr-kimari"));
+
+    // --- dashboard helpers ---
+    function pickTodayIndex(){
+      const base = poems.length || 100;
+      const d = new Date();
+      const dayOfYear = Math.floor((Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()) - Date.UTC(d.getFullYear(),0,0)) / 24/60/60/1000);
+      return dayOfYear % base;
+    }
+    function getWeakestN(n){
+      const arr = poems.map(p=>{
+        const st = state.stats[p.id] || { attempts:0, correct:0 };
+        const acc = st.attempts ? (st.correct / st.attempts) : null;
+        return { id: p.id, acc, attempts: st.attempts || 0, poem: p };
+      });
+      const withAttempts = arr.filter(a=>a.attempts>0).sort((a,b)=>{
+        if(a.acc === null) return 1; if(b.acc === null) return -1;
+        if(a.acc === b.acc) return a.attempts - b.attempts;
+        return a.acc - b.acc;
+      });
+      const noAttempts = arr.filter(a=>a.attempts===0);
+      const result = [];
+      for(let i=0;i<withAttempts.length && result.length<n;i++) result.push(withAttempts[i]);
+      for(let i=0;i<noAttempts.length && result.length<n;i++) result.push(noAttempts[i]);
+      return result.slice(0,n);
+    }
+
+    function renderDashboard(){
+      const idx = pickTodayIndex();
+      const p = poems[idx] || poems[0];
+      $("#today-id").textContent = p?.id || "";
+      $("#today-author").textContent = p?.author || "";
+      $("#today-kami").textContent = p?.kami || "";
+      $("#today-shimo").textContent = p?.shimo || "";
+      $("#today-kimari").textContent = p?.kimari || "";
+
+      const weak = getWeakestN(3);
+      const weakWrap = $("#dash-weak"); weakWrap.innerHTML = "";
+      if(weak.length === 0){
+        weakWrap.innerHTML = `<div class="muted">まだ学習記録がありません</div>`;
+      } else {
+        weak.forEach(w=>{
+          const p = w.poem;
+          const accText = w.attempts ? Math.round((w.acc||0)*100) + "%" : "未練習";
+          const div = document.createElement("div");
+          div.className = "item";
+          div.innerHTML = `<div style="flex:1"><div><span class="badge">#${p.id}</span> ${p.kami}</div><div class="muted">${p.author} ／ 決まり字 ${p.kimari}</div></div><div style="min-width:80px; text-align:right">${accText}</div>`;
+          div.addEventListener("click", ()=>{ cardIndex = poems.findIndex(x=>x.id===p.id); renderCard(); document.querySelector('[data-tab="flash"]').click(); });
+          weakWrap.appendChild(div);
+        });
+      }
+
+      const recentWrap = $("#dash-recent"); recentWrap.innerHTML = "";
+      const recent = (state.recent || []).slice(0,10);
+      if(recent.length === 0) recentWrap.innerHTML = `<div class="muted">まだ記録がありません</div>`;
+      else {
+        recent.forEach(r=>{
+          const p = poems.find(x=>x.id===r.id) || { id: r.id, kami: "（不明）", author: "" };
+          const d = new Date(r.time);
+          const timeStr = `${d.getMonth()+1}/${d.getDate()} ${d.getHours()}:${String(d.getMinutes()).padStart(2,"0")}`;
+          const div = document.createElement("div");
+          div.className = "item";
+          div.innerHTML = `<div style="display:flex; justify-content:space-between; gap:8px;"><div><strong>${r.correct ? "○" : "×"}</strong> #${p.id} ${p.kami}</div><div class="muted">${timeStr}</div></div>`;
+          recentWrap.appendChild(div);
+        });
+      }
+
+      $("#dash-streak").textContent = state.streak || 0;
+      $("#dash-total").textContent = state.totalCorrect || 0;
+      $("#dash-accuracy").textContent = overallAccuracy()+"%";
+    }
+
+    // --- flash card ---
+    let cardIndex = 0, cardHintTimer = null;
+    function renderCard(){
+      const p = poems[cardIndex] || poems[0];
+      $("#card-id").textContent = p.id;
+      $("#card-author").textContent = p.author;
+      $("#card-kami").textContent = p.kami;
+      $("#card-shimo").textContent = p.shimo;
+      $("#card-kimari").textContent = p.kimari;
+      $("#card-shimo").style.filter = "blur(3px)";
+      $("#toggle-shimo").textContent = "下の句を表示";
+      const hint = $("#card-hint");
+      hint.classList.remove("show");
+      hint.textContent = "";
+      if(cardHintTimer) clearTimeout(cardHintTimer);
+      cardHintTimer = setTimeout(()=>{
+        const p = poems[cardIndex];
+        const h = `ヒント: 下の句の先頭「${(p.shimo||"").slice(0, 6)}…」／決まり字「${p.kimari}」`;
+        hint.textContent = h; hint.classList.add("show");
+      }, 8000);
+    }
+    renderCard();
+
+    $("#toggle-shimo").addEventListener("click", () => {
+      const el = $("#card-shimo");
+      const isBlur = getComputedStyle(el).filter !== "none";
+      el.style.filter = isBlur ? "none" : "blur(3px)";
+      $("#toggle-shimo").textContent = isBlur ? "下の句を隠す" : "下の句を表示";
+    });
+    $("#next-card").addEventListener("click", () => { cardIndex = (cardIndex + 1) % poems.length; renderCard(); });
+    $("#random-card").addEventListener("click", () => { cardIndex = Math.floor(Math.random() * poems.length); renderCard(); });
+
+    // --- quiz ---
+    let quizIndex = 0, quizHintTimer = null;
+    function pickChoices(correctIndex, n=4){
+      const idxs = new Set([correctIndex]);
+      while (idxs.size < n) idxs.add(Math.floor(Math.random() * poems.length));
+      return Array.from(idxs).sort(() => Math.random() - 0.5);
+    }
+    function renderQuiz(){
+      const p = poems[quizIndex] || poems[0];
+      $("#quiz-id").textContent = p.id;
+      $("#quiz-author").textContent = p.author;
+      $("#quiz-kami").textContent = p.kami;
+      $("#quiz-result").textContent = "";
+      const hint = $("#quiz-hint"); hint.classList.remove("show"); hint.textContent = "";
+      const wrap = $("#quiz-choices"); wrap.innerHTML = "";
+      const choiceIdxs = pickChoices(quizIndex, 4);
+      choiceIdxs.forEach(i => {
+        const c = document.createElement("div");
+        c.className = "choice";
+        c.innerHTML = `<div><span class="badge">下の句</span><br>${poems[i].shimo}</div>`;
+        c.addEventListener("click", () => {
+          $$(".choice").forEach(x => x.classList.remove("correct","wrong"));
+          const isCorrect = i === quizIndex;
+          c.classList.add(isCorrect ? "correct" : "wrong");
+          $("#quiz-result").textContent = isCorrect ? "正解！" : "不正解";
+          recordResult(poems[quizIndex].id, isCorrect);
+        });
+        wrap.appendChild(c);
+      });
+      if(quizHintTimer) clearTimeout(quizHintTimer);
+      quizHintTimer = setTimeout(()=>{
+        const h = `ヒント: 下の句の先頭「${(p.shimo||"").slice(0,6)}…」／決まり字「${p.kimari}」`;
+        hint.textContent = h; hint.classList.add("show");
+      }, 8000);
+    }
+    renderQuiz();
+
+    $("#next-quiz").addEventListener("click", () => {
+      quizIndex = state.quizShuffle ? Math.floor(Math.random() * poems.length) : (quizIndex + 1) % poems.length;
+      renderQuiz();
+    });
+    $("#shuffle-quiz").addEventListener("click", () => {
+      state.quizShuffle = !state.quizShuffle; store.save(state);
+      $("#shuffle-quiz").textContent = state.quizShuffle ? "ランダム出題中" : "ランダム出題";
+    });
+    $("#shuffle-quiz").textContent = state.quizShuffle ? "ランダム出題中" : "ランダム出題";
+
+    // --- search list ---
+    function renderList(){
+      const q = ($("#q").value || "").trim();
+      const k = $("#kimari-filter").value;
+      const list = $("#list"); list.innerHTML = "";
+      const hit = poems.filter(p => {
+        const inText = !q || p.author.includes(q) || p.kami.includes(q) || p.shimo.includes(q) || (p.modern||"").includes(q) || p.kimari.includes(q);
+        const inK = !k || p.kimari === k;
+        return inText && inK;
+      });
+      if(hit.length === 0){ list.innerHTML = `<div class="muted">該当なし</div>`; return; }
+      hit.forEach(p => {
+        const div = document.createElement("div");
+        div.className = "item";
+        div.innerHTML = `
+          <div><span class="badge">番号</span> ${p.id} ／ <span class="badge">作者</span> ${p.author} ／ <span class="badge">決まり字</span> <span class="gold">${p.kimari}</span></div>
+          <div class="muted">${p.kami} ／ ${p.shimo}</div>
+        `;
+        div.addEventListener("click", () => { cardIndex = poems.findIndex(x => x.id === p.id); renderCard(); document.querySelector('[data-tab="flash"]').click(); });
+        list.appendChild(div);
+      });
+    }
+    renderList();
+    $("#q").addEventListener("input", renderList);
+    $("#kimari-filter").addEventListener("change", renderList);
+
+    // --- practice ---
+    let prPool = [], prOrder = [], prPos=0, prHintTimer=null, prCorrect=0, prWrong=0;
+    function parseRangeText(txt){
+      if(!txt) return null;
+      const ranges = txt.split(",").map(s=>s.trim()).filter(Boolean);
+      const set = new Set();
+      ranges.forEach(r=>{
+        const m = r.match(/^(\d+)\s*-\s*(\d+)$/);
+        if(m){ const a=Number(m[1]), b=Number(m[2]); for(let i=Math.min(a,b); i<=Math.max(a,b); i++) set.add(i); }
+        else { const n = Number(r); if(!isNaN(n)) set.add(n); }
+      });
+      return set.size ? set : null;
+    }
+    function buildPracticePool(){
+      const author = $("#pr-author").value.trim();
+      const keyword = $("#pr-keyword").value.trim();
+      const kimari = $("#pr-kimari").value;
+      const rangeSet = parseRangeText($("#pr-range").value.trim());
+      const weak = $("#pr-weak").value;
+
+      let pool = poems.filter(p=>{
+        const byAuthor = !author || p.author.includes(author);
+        const byKey = !keyword || p.kami.includes(keyword) || p.shimo.includes(keyword) || (p.modern||"").includes(keyword) || (p.notes||"").includes(keyword);
+        const byKimari = !kimari || p.kimari === kimari;
+        const byRange = !rangeSet || rangeSet.has(p.id);
+        return byAuthor && byKey && byKimari && byRange;
+      });
+
+      if(weak){
+        pool = pool.filter(p=>{
+          const st = getStat(p.id);
+          const acc = st.attempts ? (st.correct / st.attempts) : 0;
+          if(weak === "low-acc") return acc < 0.5 && st.attempts > 0;
+          if(weak === "no-attempts") return st.attempts === 0;
+          if(weak === "recent-wrong") return st.lastWrong === true;
+          return true;
+        });
+      }
+      $("#pr-count").textContent = `対象: ${pool.length}首`;
+      return pool;
+    }
+    ["input","change"].forEach(ev=>{
+      ["#pr-author","#pr-keyword","#pr-kimari","#pr-range","#pr-weak","#pr-size"].forEach(id=>{
+        $(id).addEventListener(ev, ()=> buildPracticePool());
+      });
+    });
+    buildPracticePool();
+
+    function startPractice(poolOverride){
+      prPool = poolOverride || buildPracticePool();
+      const size = Number($("#pr-size").value || 10);
+      prOrder = prPool.slice().sort(()=>Math.random()-0.5).slice(0, size);
+      prPos = 0; prCorrect=0; prWrong=0;
+      $("#pr-total").textContent = prOrder.length;
+      $("#pr-correct").textContent = 0;
+      $("#pr-wrong").textContent = 0;
+      $("#practice-wrap").style.display = prOrder.length ? "block" : "none";
+      renderPractice();
+      document.querySelector('[data-tab="practice"]').click();
+    }
+    function renderPractice(){
+      if(prOrder.length === 0){ $("#practice-wrap").style.display="none"; return; }
+      $("#pr-progress").textContent = prPos+1;
+      const p = prOrder[prPos];
+      $("#pr-kami").textContent = p.kami;
+      $("#pr-result").textContent = "";
+      $("#pr-hint").classList.remove("show"); $("#pr-hint").textContent = "";
+      const wrap = $("#pr-choices"); wrap.innerHTML = "";
+      const idx = poems.findIndex(x=>x.id===p.id);
+      const choiceIdxs = pickChoices(idx, 4);
+      choiceIdxs.forEach(i=>{
+        const c = document.createElement("div");
+        c.className="choice";
+        c.innerHTML = `<div><span class="badge">下の句</span><br>${poems[i].shimo}</div>`;
+        c.addEventListener("click", ()=>{
+          $$(".choice").forEach(x=>x.classList.remove("correct","wrong"));
+          const isCorrect = poems[i].id === p.id;
+          c.classList.add(isCorrect ? "correct" : "wrong");
+          $("#pr-result").textContent = isCorrect ? "正解！" : "不正解";
+          recordResult(p.id, isCorrect);
+          isCorrect ? (prCorrect++, $("#pr-correct").textContent=prCorrect) : (prWrong++, $("#pr-wrong").textContent=prWrong);
+        });
+        wrap.appendChild(c);
+      });
+      if(prHintTimer) clearTimeout(prHintTimer);
+      prHintTimer = setTimeout(()=>{
+        const h = `ヒント: 下の句の先頭「${(p.shimo||"").slice(0,6)}…」／決まり字「${p.kimari}」`;
+        $("#pr-hint").textContent = h; $("#pr-hint").classList.add("show");
+      }, 8000);
+    }
+    $("#pr-start").addEventListener("click", ()=> startPractice());
+    $("#pr-next").addEventListener("click", ()=>{
+      if(prOrder.length===0) return;
+      prPos = (prPos + 1);
+      if(prPos >= prOrder.length){ $("#pr-result").textContent = "終了！お疲れさま"; return; }
+      renderPractice();
+    });
+    $("#pr-clear").addEventListener("click", ()=>{
+      $("#pr-author").value=""; $("#pr-keyword").value=""; $("#pr-kimari").value="";
+      $("#pr-range").value=""; $("#pr-weak").value="";
+      buildPracticePool();
+      $("#practice-wrap").style.display="none";
+    });
+
+    // --- challenge ---
+    let chTimer=null, chStartTime=0, chCorrect=0, chWrong=0, chActive=false, chHintTimer=null, chIndex=null;
+    function startChallenge(){
+      chActive = true; chCorrect=0; chWrong=0; chStartTime = Date.now();
+      $("#ch-correct").textContent = 0; $("#ch-wrong").textContent = 0; $("#ch-time").textContent = "0s";
+      $("#ch-wrap").style.display = "block";
+      nextChallenge();
+      if(chTimer) clearInterval(chTimer);
+      chTimer = setInterval(()=>{ const t=Math.floor((Date.now()-chStartTime)/1000); $("#ch-time").textContent = t+"s"; }, 500);
+      document.querySelector('[data-tab="challenge"]').click();
+    }
+    function stopChallenge(){
+      chActive = false; $("#ch-wrap").style.display = "none";
+      if(chTimer) clearInterval(chTimer);
+      state.challenge = { score: chCorrect, time: Math.floor((Date.now()-chStartTime)/1000) };
+      store.save(state); updateStats();
+    }
+    function nextChallenge(){
+      chIndex = Math.floor(Math.random() * poems.length);
+      const p = poems[chIndex];
+      $("#ch-kami").textContent = p.kami;
+      $("#ch-result").textContent = "";
+      $("#ch-hint").classList.remove("show"); $("#ch-hint").textContent = "";
+      const wrap = $("#ch-choices"); wrap.innerHTML = "";
+      const choiceIdxs = pickChoices(chIndex, 4);
+      choiceIdxs.forEach(i=>{
+        const c = document.createElement("div");
+        c.className="choice";
+        c.innerHTML = `<div><span class="badge">下の句</span><br>${poems[i].shimo}</div>`;
+        c.addEventListener("click", ()=>{
+          if(!chActive) return;
+          const isCorrect = i === chIndex;
+          c.classList.add(isCorrect ? "correct" : "wrong");
+          $("#ch-result").textContent = isCorrect ? "正解！" : "不正解";
+          recordResult(poems[chIndex].id, isCorrect);
+          if(isCorrect){ chCorrect++; $("#ch-correct").textContent = chCorrect; } else { chWrong++; $("#ch-wrong").textContent = chWrong; }
+          setTimeout(nextChallenge, 500);
+        });
+        wrap.appendChild(c);
+      });
+      if(chHintTimer) clearTimeout(chHintTimer);
+      chHintTimer = setTimeout(()=>{
+        const h = `ヒント: 下の句の先頭「${(p.shimo||"").slice(0,6)}…」／決まり字「${p.kimari}」`;
+        $("#ch-hint").textContent = h; $("#ch-hint").classList.add("show");
+      }, 8000);
+    }
+    $("#ch-start").addEventListener("click", startChallenge);
+    $("#ch-stop").addEventListener("click", stopChallenge);
+
+    // --- resources (list + detail) ---
+    function renderResList(){
+      const list = $("#res-list"); list.innerHTML="";
+      poems.forEach(p=>{
+        const div = document.createElement("div");
+        div.className="item";
+        div.innerHTML = `
+          <div><span class="badge">番号</span> ${p.id} ／ <span class="badge">作者</span> ${p.author}</div>
+          <div class="muted"><span class="gold">${p.kimari}</span> ／ ${p.kami} ／ ${p.shimo}</div>
+        `;
+        div.addEventListener("click", ()=> renderResDetail(p));
+        list.appendChild(div);
+      });
+    }
+    function renderResDetail(p){
+      const st = getStat(p.id);
+      const acc = st.attempts ? Math.round((st.correct/st.attempts)*100) : 0;
+      $("#res-detail").innerHTML = `
+        <div><span class="badge">番号</span> ${p.id} ／ <span class="badge">作者</span> ${p.author}</div>
+        <div class="spacer"></div>
+        <div><span class="badge">決まり字</span> <span class="gold">${p.kimari}</span></div>
+        <div class="spacer"></div>
+        <div><span class="badge">上の句</span><br>${p.kami}</div>
+        <div class="spacer"></div>
+        <div><span class="badge">下の句</span><br>${p.shimo}</div>
+        <div class="spacer"></div>
+        <div><span class="badge">現代語訳</span><br>${(p.modern||"（未設定）")}</div>
+        <div class="spacer"></div>
+        <div><span class="badge">注記</span><br>${(p.notes||"（未設定）")}</div>
+        <div class="spacer"></div>
+        <div><span class="badge">あなたの統計</span> 正答率 ${acc}% ／ 試行 ${st.attempts} ／ 正解 ${st.correct}</div>
+      `;
+    }
+    renderResList();
+
+    // --- settings: export/import/apply/reset/clear ---
+    function refreshEditor(){ $("#data-editor").value = JSON.stringify(poems, null, 2); }
+    refreshEditor();
+
+    $("#export-json").addEventListener("click", () => {
+      const blob = new Blob([JSON.stringify(poems, null, 2)], { type: "application/json" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url; a.download = "hyakunin_isshu.json"; a.click();
+      URL.revokeObjectURL(url);
+    });
+
+    $("#import-json").addEventListener("click", () => $("#file-input").click());
+    $("#file-input").addEventListener("change", async (e) => {
+      const file = e.target.files[0];
+      if (!file) return;
+      const text = await file.text();
+      try {
+        const data = JSON.parse(text);
+        if (!Array.isArray(data)) throw new Error("配列ではありません");
+        poems = data;
+        savePoemsToStorage();
+        rebuildKimariSelect($("#kimari-filter"));
+        rebuildKimariSelect($("#pr-kimari"));
+        renderCard(); renderQuiz(); renderList(); renderResList(); refreshEditor(); renderDashboard();
+        alert("読み込み成功（ローカルに保存しました）");
+      } catch (err) {
+        alert("JSONの形式が不正です");
+      }
+      e.target.value = "";
+    });
+
+    $("#apply-data").addEventListener("click", () => {
+      try {
+        const data = JSON.parse($("#data-editor").value);
+        if (!Array.isArray(data)) throw new Error("配列ではありません");
+        poems = data;
+        savePoemsToStorage();
+        rebuildKimariSelect($("#kimari-filter"));
+        rebuildKimariSelect($("#pr-kimari"));
+        renderCard(); renderQuiz(); renderList(); renderResList(); renderDashboard();
+        alert("データを適用して保存しました");
+      } catch {
+        alert("JSONが読み取れませんでした");
+      }
+    });
+
+    $("#reset-progress").addEventListener("click", () => {
+      if (confirm("進捗（連続正解・通算正解・各歌統計）をリセットしますか？")) {
+        state.streak = 0; state.totalCorrect = 0; state.stats = {}; state.challenge = {score:0,time:0}; state.recent = []; store.save(state); updateStats(); renderDashboard();
+      }
+    });
+
+    $("#clear-data").addEventListener("click", () => {
+      if(confirm("保存された詩データ（ローカル）を削除しますか？\n※ 組み込みの初期10首に戻ります。")){
+        clearPoemsFromStorage();
+        poems = defaultPoems.slice();
+        rebuildKimariSelect($("#kimari-filter"));
+        rebuildKimariSelect($("#pr-kimari"));
+        renderCard(); renderQuiz(); renderList(); renderResList(); refreshEditor(); renderDashboard();
+        alert("ローカルデータを削除しました（初期データに戻しました）");
+      }
+    });
+
+    // --- dashboard quick buttons ---
+    $("#dash-search-go").addEventListener("click", ()=>{
+      const q = $("#dash-search").value.trim();
+      $("#q").value = q;
+      document.querySelector('[data-tab="search"]').click();
+      renderList();
+    });
+    $("#today-flash").addEventListener("click", ()=>{
+      const idx = pickTodayIndex();
+      cardIndex = idx;
+      renderCard();
+      document.querySelector('[data-tab="flash"]').click();
+    });
+    $("#today-practice").addEventListener("click", ()=>{
+      const idx = pickTodayIndex();
+      const p = poems[idx];
+      startPractice([p]);
+    });
+    $("#today-challenge").addEventListener("click", ()=> startChallenge());
+    $("#dash-flash-btn").addEventListener("click", ()=>{ document.querySelector('[data-tab="flash"]').click(); });
+    $("#dash-practice-btn").addEventListener("click", ()=>{ startPractice(); });
+    $("#dash-challenge-btn").addEventListener("click", ()=>{ startChallenge(); });
+
+    // --- initial render ---
+    renderDashboard();
+    renderCard();
+    renderQuiz();
+    renderList();
+    renderResList();
+    updateStats();
+    refreshEditor();
+  </script>
+</body>
+</html>
